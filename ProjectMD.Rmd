@@ -1,0 +1,185 @@
+---
+title: 'Practical Machine Learning Project: Prediction Assignment'
+author: "Marc Vila"
+date: "3/5/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+This is the report corresponding to the Peer Assessment project from Coursera’s course Practical Machine Learning, as part of the Specialization in Data Science.
+
+The analysis has been carried out with RStudio and the main goal of it is to predict how which 6 participants performed some physical exercises. This behaviour grade corresponds to the *classe* variable in the training set.
+
+Two machine learning algorithms have been developed and applied to the test data in order to quantify its prediction capabilities.
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+More information is available from the website here: 
+[http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+See the section on the Weight Lifting Exercise Dataset).
+
+## 1. Data Sets and Exploratory Analysis
+
+### 1.1. Data Sets
+
+The training data for this project are available here:
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here:
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+The data for this project come from [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. “Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13)”. Stuttgart, Germany: ACM SIGCHI, 2013.
+
+### 1.2. Basic Exploratory data analysis
+
+```{r Load libraries and Data Sets}
+
+## Libraries
+
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(ggplot2)
+
+## Loading the files that contain the data
+trainingRaw <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testingRaw <- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+
+```
+
+**Data Preprocessing and Cleaning**
+
+```{r Data Preprocessing and Cleaning}
+
+dim(trainingRaw)
+dim(testingRaw)
+
+## Data preprocessing
+classe <- trainingRaw$classe
+
+## The 7 first columns are meaningless for our analysis purposes
+trainingRaw <- trainingRaw[, 8:160]
+testingRaw  <- testingRaw[, 8:160]
+
+## Cleaning those column with all NA values
+training <- trainingRaw[, colSums(is.na(trainingRaw)) == 0] 
+testing <- testingRaw[, colSums(is.na(testingRaw)) == 0]
+
+## Adding again classe field to our data frame
+training$classe <- classe
+
+```
+
+**Exploratory Analysis**
+
+```{r Exploratory Analysis}
+
+dim(training)
+dim(testing)
+
+##Correlation Matrix  
+
+corrMatrix <- cor(training[, -length(names(training))])
+corrplot(corrMatrix, order = "FPC", method = "color", type = "lower", tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+The correlation between the variables is relatively low, only those that are referred to the same position in diferent axis of measurement have higher correlation values.
+
+## 2. Random Forest and Gradient Boosting Machine models
+
+### 2.1. Reproducible split of our data into 75% of Training Set and 25% Validation Set
+
+```{r Reproducible split of our data into 75% of Training Set and 25% Validation Set}
+
+## Reproducible split of our data into 75% of Training Set and 35% Validation Set
+set.seed(1234567)
+inTrain <- createDataPartition(y=training$classe, p=0.75, list=FALSE)
+trainData  <- training[inTrain,]
+testData  <- training[-inTrain,]
+
+```
+
+### 2.2. Random Forest Model
+
+```{r Random Forest Model, cache = TRUE}
+
+## Data Modeling using Random Forest algorithm with resampling method of 8 folds CV
+
+controlRF <- trainControl(method="cv", number = 8)
+modelRF <- train(classe ~ ., data=trainData, method="rf", trControl=controlRF, ntree=201)
+modelRF
+
+```
+
+**Performance of our RF model on the validation data set**
+
+```{r Random Forest Model prediction on Validation Data}
+
+predictRF <- predict(modelRF, testData)
+CMRF <- confusionMatrix(factor(testData$classe), predictRF)
+```
+
+### 2.3. GBM Model
+
+```{r GBM Model, cache = TRUE}
+
+## Data Modeling using Gradient Boosting Machine algorithm with resampling method of 8 folds CV
+
+controlGBM <- trainControl(method = "repeatedcv", number = 8, repeats = 1)
+modelGBM  <- train(classe ~ ., data=trainData, method = "gbm", trControl = controlGBM, verbose = FALSE)
+modelGBM
+```
+
+**Performance of our GBM model on the validation data set**
+
+```{r GBM Model prediction on Validation Data}
+predictGBM <- predict(modelGBM, testData)
+CMGBM <- confusionMatrix(factor(testData$classe), predictGBM)
+```
+
+### 2.4. comparison of both Models
+
+**Random Forest Model**
+
+```{r Summary of RF model}
+CMRF
+CMRF$overall
+```
+
+**GBM Model**
+
+```{r Basic summary of GBM model}
+CMGBM
+CMGBM$overall
+```
+
+The best accuracy corresponds to the Random Forest model **0.991** compared to GBM model which has an accuracy of **0.961**.
+
+## 3. Results of the prediction models on the Test Dataset(of 20 volunteers)
+
+### 3.1. Application of the RF model on the Testing Data.  
+```{r Application of RF Model}
+RFprediction <- predict(modelRF, testing)
+RFprediction
+```
+
+### 3.2. Application of the GBM model on the Testing Data. 
+```{r Application of GBM Model}
+GBMprediction <- predict(modelGBM, testing)
+GBMprediction
+```
+
+Both models get the same prediction of the Testing Dataset of 20 volunteers.
